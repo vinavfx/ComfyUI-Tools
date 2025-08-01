@@ -8,6 +8,9 @@ import torch
 import comfy.utils
 import comfy.model_management
 import node_helpers
+import comfy.latent_formats
+from nodes import MAX_RESOLUTION
+import torch.nn.functional as F
 
 
 class basic_node:
@@ -27,53 +30,40 @@ class basic_node:
         return (text + " desde mi nodo!",)
 
 
-class wan_image_to_video:
+class wan22_inpainting:
     @classmethod
-    def INPUT_TYPES(cls):
-        return {"required": {"positive": ("CONDITIONING", ),
-                             "negative": ("CONDITIONING", ),
-                             "vae": ("VAE", ),
-                             "width": ("INT", {"default": 832, "min": 16, "max": nodes.MAX_RESOLUTION, "step": 16}),
-                             "height": ("INT", {"default": 480, "min": 16, "max": nodes.MAX_RESOLUTION, "step": 16}),
-                             "length": ("INT", {"default": 81, "min": 1, "max": nodes.MAX_RESOLUTION, "step": 4}),
-                             "batch_size": ("INT", {"default": 1, "min": 1, "max": 4096}),
-                             },
-                "optional": {"clip_vision_output": ("CLIP_VISION_OUTPUT", ),
+    def INPUT_TYPES(s):
+        return {"required": {"vae": ("VAE", ),
                              "start_image": ("IMAGE", ),
-                             }}
+                             "width": ("INT", {"default": 1280, "min": 32, "max": nodes.MAX_RESOLUTION, "step": 32}),
+                             "height": ("INT", {"default": 704, "min": 32, "max": nodes.MAX_RESOLUTION, "step": 32}),
+                             "length": ("INT", {"default": 49, "min": 1, "max": nodes.MAX_RESOLUTION, "step": 4}),
+                             "batch_size": ("INT", {"default": 1, "min": 1, "max": 4096}),
+                             }, }
 
-    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
-    RETURN_NAMES = ("positive", "negative", "latent")
+    RETURN_TYPES = ("LATENT",)
     FUNCTION = "encode"
 
-    #  CATEGORY = "conditioning/video_models"
+    CATEGORY = 'vina'
 
-    def encode(self, positive, negative, vae, width, height, length, batch_size, start_image=None, clip_vision_output=None):
-        latent = torch.zeros([batch_size, 16, ((length - 1) // 4) + 1, height //
-                             8, width // 8], device=comfy.model_management.intermediate_device())
-        if start_image is not None:
-            start_image = comfy.utils.common_upscale(
-                start_image[:length].movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
-            image = torch.ones(
-                (length, height, width, start_image.shape[-1]), device=start_image.device, dtype=start_image.dtype) * 0.5
-            image[:start_image.shape[0]] = start_image
+    def encode(self, vae, width, height, length, batch_size, start_image):
+        latent = torch.zeros([1, 48, ((length - 1) // 4) + 1, height // 16,
+                             width // 16], device=comfy.model_management.intermediate_device())
+        mask = torch.ones([latent.shape[0], 1, ((length - 1) // 4) + 1, latent.shape[-2],
+                          latent.shape[-1]], device=comfy.model_management.intermediate_device())
 
-            concat_latent_image = vae.encode(image[:, :, :, :3])
-            mask = torch.ones((1, 1, latent.shape[2], concat_latent_image.shape[-2],
-                              concat_latent_image.shape[-1]), device=start_image.device, dtype=start_image.dtype)
-            mask[:, :, :((start_image.shape[0] - 1) // 4) + 1] = 0.0
-
-            positive = node_helpers.conditioning_set_values(
-                positive, {"concat_latent_image": concat_latent_image, "concat_mask": mask})
-            negative = node_helpers.conditioning_set_values(
-                negative, {"concat_latent_image": concat_latent_image, "concat_mask": mask})
-
-        if clip_vision_output is not None:
-            positive = node_helpers.conditioning_set_values(
-                positive, {"clip_vision_output": clip_vision_output})
-            negative = node_helpers.conditioning_set_values(
-                negative, {"clip_vision_output": clip_vision_output})
+        start_image = comfy.utils.common_upscale(
+            start_image[:length].movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
+        latent_temp = vae.encode(start_image)
+        latent[:, :, :latent_temp.shape[-3]] = latent_temp
+        mask[:, :, :latent_temp.shape[-3]] *= 0.0
 
         out_latent = {}
-        out_latent["samples"] = latent
-        return (positive, negative, out_latent)
+        latent_format = comfy.latent_formats.Wan22()
+        latent = latent_format.process_out(
+            latent) * mask + latent * (1.0 - mask)
+        out_latent["samples"] = latent.repeat(
+            (batch_size, ) + (1,) * (latent.ndim - 1))
+        out_latent["noise_mask"] = mask.repeat(
+            (batch_size, ) + (1,) * (mask.ndim - 1))
+        return (out_latent,)
