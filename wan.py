@@ -60,8 +60,6 @@ class wan22_video2video:
         mask[:, :, :n_start] = 0
 
         out_latent = {}
-        latent_format = comfy.latent_formats.Wan22()
-        latent = latent_format.process_out(latent) * mask + latent * (1.0 - mask)
         out_latent["samples"] = latent
         out_latent["noise_mask"] = mask
         return (out_latent,)
