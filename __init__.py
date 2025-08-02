@@ -3,7 +3,7 @@
 # OFFICE --------> Senior VFX Compositor, Software Developer
 # WEBSITE -------> https://vinavfx.com
 # -----------------------------------------------------------
-from .wan import wan22_video2video
+from .wan22 import wan22_video2video
 
 
 NODE_CLASS_MAPPINGS = {

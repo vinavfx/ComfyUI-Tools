@@ -10,23 +10,6 @@ import comfy.model_management
 import comfy.latent_formats
 
 
-class basic_node:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "text": ("STRING", {"default": "Hola Mundo!"})
-            }
-        }
-
-    CATEGORY = 'vina'
-    RETURN_TYPES = ("STRING",)
-    FUNCTION = "process"
-
-    def process(self, text):
-        return (text + " desde mi nodo!",)
-
-
 class wan22_video2video:
     @classmethod
     def INPUT_TYPES(s):
