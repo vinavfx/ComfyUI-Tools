@@ -7,12 +7,11 @@ import nodes
 import torch
 import comfy.utils
 import comfy.model_management
-import comfy.latent_formats
 
 
-class wan22_video2video:
+class Wan22VideoToVideo:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {"required": {"vae": ("VAE", ),
                              "video_image": ("IMAGE", ),
                              "start_image": ("IMAGE", ),
